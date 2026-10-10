@@ -36,6 +36,8 @@
 #define SF_METROPOLICE_NO_MANHACK_DEPLOY	0x00800000
 #define SF_METROPOLICE_ALLOWED_TO_RESPOND	0x01000000
 #define SF_METROPOLICE_MID_RANGE_ATTACK		0x02000000
+// New: elite spawnflag (next free bit)
+#define SF_METROPOLICE_ELITE                 0x04000000
 
 #define METROPOLICE_MID_RANGE_ATTACK_RANGE	3500.0f
 
@@ -227,6 +229,8 @@ BEGIN_DATADESC( CNPC_MetroPolice )
 	DEFINE_FIELD( m_nIdleChatterType, FIELD_INTEGER ),
 
 	DEFINE_FIELD( m_bSimpleCops, FIELD_BOOLEAN ),
+	// New: Elite boolean
+	DEFINE_FIELD(m_fIsElite, FIELD_BOOLEAN),
 	DEFINE_FIELD( m_flLastHitYaw, FIELD_FLOAT ),
 
 	DEFINE_FIELD( m_bPlayerTooClose,	FIELD_BOOLEAN ),
@@ -256,6 +260,8 @@ BEGIN_DATADESC( CNPC_MetroPolice )
 	DEFINE_INPUTFUNC( FIELD_VOID, "DeployManhack", InputDeployManhack ),
 	DEFINE_INPUTFUNC( FIELD_INTEGER, "AddManhacks", InputAddManhacks ),
 	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetManhacks", InputSetManhacks ),
+	// New: Set Elite input
+	DEFINE_INPUTFUNC(FIELD_BOOLEAN, "SetElite", InputSetElite),
 #endif
 	DEFINE_INPUTFUNC( FIELD_STRING, "SetPoliceGoal", InputSetPoliceGoal ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "ActivateBaton", InputActivateBaton ),
@@ -840,6 +846,7 @@ void CNPC_MetroPolice::Spawn( void )
 	SetBloodColor( BLOOD_COLOR_RED );
 	m_nIdleChatterType = METROPOLICE_CHATTER_ASK_QUESTION; 
 	m_bSimpleCops = HasSpawnFlags( SF_METROPOLICE_SIMPLE_VERSION );
+	m_fIsElite = HasSpawnFlags(SF_METROPOLICE_ELITE);
 	if ( HasSpawnFlags( SF_METROPOLICE_NOCHATTER ) )
 	{
 		AddSpawnFlags( SF_NPC_GAG );
@@ -873,6 +880,51 @@ void CNPC_MetroPolice::Spawn( void )
 	m_iPistolClips = METROPOLICE_NUM_CLIPS;
 
 	NPCInit();
+
+	// Disable shooting while moving
+	//m_MoveAndShootOverlay()->NoShootWhileMove();
+
+	// New: Elite - slightly tougher and becomes squad leader (if in a squad)
+	if (m_fIsElite)
+	{
+		// Slight health increase (x2). Tune if you want a convar instead.
+		int iBaseHealth = m_iHealth;
+		int iEliteHealth = iBaseHealth * 2; // x2 (integer)
+		SetMaxHealth(iEliteHealth);
+		SetHealth(iEliteHealth);
+		SetSkin(2);
+		
+		// If we're already in a squad, reorder members so I become the leader.
+		if (IsInSquad() && m_pSquad && m_pSquad->NumMembers() > 1)
+		 {
+			// Collect current members
+			CAI_BaseNPC * arrMembers[MAX_SQUAD_MEMBERS];
+			int nMembers = 0;
+			AISquadIter_t iter;
+			for (CAI_BaseNPC* pMember = m_pSquad->GetFirstMember(&iter); pMember; pMember = m_pSquad->GetNextMember(&iter))
+			{
+				if (nMembers < MAX_SQUAD_MEMBERS)
+					arrMembers[nMembers++] = pMember;
+			}
+			
+				// Remove everyone then add back with elite first
+				for (int i = 0; i < nMembers; ++i)
+				{
+					m_pSquad->RemoveFromSquad(arrMembers[i], false);
+				}
+			
+				// Add elite first
+				m_pSquad->AddToSquad(this);
+			
+				// Add others preserving previous order (skip 'this')
+				for (int i = 0; i < nMembers; ++i)
+				{
+				if (arrMembers[i] != this)
+					 m_pSquad->AddToSquad(arrMembers[i]);
+				}
+			}
+		}
+		// --- end ELITE block ---
 
 	// NOTE: This must occur *after* init, since init sets default dist look
 	if ( HasSpawnFlags( SF_METROPOLICE_MID_RANGE_ATTACK ) )
@@ -2993,6 +3045,13 @@ void CNPC_MetroPolice::InputSetManhacks( inputdata_t &inputdata )
 
 	SetBodygroup( METROPOLICE_BODYGROUP_MANHACK, (m_iManhacks > 0) );
 }
+
+// New: set Elite flag
+void CNPC_MetroPolice::InputSetElite(inputdata_t & inputdata)
+ {
+	m_fIsElite = inputdata.value.Bool();
+}
+
 #endif
 
 //-----------------------------------------------------------------------------
@@ -5546,6 +5605,9 @@ int CNPC_MetroPolice::TranslateSchedule( int scheduleType )
 bool CNPC_MetroPolice::ShouldMoveAndShoot()
 {
 	if ( HasSpawnFlags( SF_METROPOLICE_ARREST_ENEMY ) )
+		return false;
+
+	if (IsMoving())
 		return false;
 
 	if ( ShouldAttemptToStitch() )

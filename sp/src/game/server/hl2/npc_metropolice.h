@@ -227,6 +227,9 @@ private:
 	void InputDeployManhack( inputdata_t &inputdata );
 	void InputAddManhacks( inputdata_t &inputdata );
 	void InputSetManhacks( inputdata_t &inputdata );
+
+	// New: allow mapper/ents to set Elite state
+	void InputSetElite(inputdata_t& inputdata);
 #endif
 	void InputSetPoliceGoal( inputdata_t &inputdata );
 	void InputActivateBaton( inputdata_t &inputdata );
@@ -526,6 +529,8 @@ private:
 	int				m_iManhacks;		// How many manhacks the cop has
 	bool			m_fWeaponDrawn;		// Is my weapon drawn? (ready to use)
 	bool			m_bSimpleCops;		// The easy version of the cops
+	// New: Elite flag
+	bool			m_fIsElite;
 	int				m_LastShootSlot;
 	CRandSimTimer	m_TimeYieldShootSlot;
 	CSimpleSimTimer m_BatonSwingTimer;
